@@ -94,39 +94,6 @@ app.delete('/products/:id', (req, res) => {
   });
 });
 
-// Confirmar compra
-app.post('/purchases', (req, res) => {
-  const { products } = req.body;
-  if (!products || !Array.isArray(products)) {
-    return res.status(400).json({ error: 'Se requiere un arreglo de productos' });
-  }
-
-  db.serialize(() => {
-    const stmt = db.prepare('UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?');
-    let errorOccurred = false;
-
-    products.forEach(({ id, quantity }) => {
-      stmt.run(quantity, id, quantity, function(err) {
-        if (err || this.changes === 0) {
-          errorOccurred = true;
-        }
-      });
-    });
-
-    stmt.finalize(() => {
-      if (errorOccurred) {
-        return res.status(400).json({ error: 'Error al procesar la compra o inventario insuficiente' });
-      }
-      res.json({ message: 'Compra procesada exitosamente' });
-    });
-  });
-});
-
-// Iniciar servidor
-app.listen(port, () => {
-  console.log(`API corriendo en http://localhost:${port}`);
-});
-
 // Crear un pedido
 app.post('/orders', (req, res) => {
   const { customer_name, customer_id, products } = req.body;
