@@ -4,6 +4,8 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
+const cors = require('cors');
+app.use(cors());
 
 // Conexión a la base de datos SQLite
 const db = new sqlite3.Database('./inventory.db', (err) => {
