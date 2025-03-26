@@ -94,76 +94,90 @@ app.delete('/products/:id', (req, res) => {
   });
 });
 
+
 // Crear un pedido
-app.post('/orders', (req, res) => {
+app.post('/orders', async (req, res) => {
   const { customer_name, customer_id, products } = req.body;
   if (!customer_name || !products || !Array.isArray(products)) {
     return res.status(400).json({ error: 'Faltan datos requeridos' });
   }
 
-  db.serialize(() => {
-    // Verificar inventario
-    const checkStmt = db.prepare('SELECT id, quantity, price FROM products WHERE id = ?');
+  try {
+    // Promisify db operations
+    const dbGet = (sql, params) => new Promise((resolve, reject) => {
+      db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
+    });
+    const dbRun = (sql, params) => new Promise((resolve, reject) => {
+      db.run(sql, params, function (err) {
+        err ? reject(err) : resolve(this);
+      });
+    });
+    const dbAll = (sql, params) => new Promise((resolve, reject) => {
+      db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)));
+    });
+
+    // 1. Verificar inventario
     let total = 0;
-    let inventoryError = false;
-
     for (const { id, quantity } of products) {
-      checkStmt.get(id, (err, row) => {
-        if (err || !row || row.quantity < quantity) {
-          inventoryError = true;
-        } else {
-          total += row.price * quantity;
-        }
-      });
-    }
-    checkStmt.finalize();
-
-    if (inventoryError) {
-      return res.status(400).json({ error: 'Inventario insuficiente o producto no encontrado' });
+      const product = await dbGet('SELECT id, quantity, price FROM products WHERE id = ?', [id]);
+      if (!product) {
+        return res.status(400).json({ error: `Producto con ID ${id} no encontrado` });
+      }
+      if (product.quantity < quantity) {
+        return res.status(400).json({ error: `Inventario insuficiente para producto ${id}` });
+      }
+      total += product.price * quantity;
     }
 
-    // Crear pedido
+    // 2. Iniciar transacción
+    await dbRun('BEGIN TRANSACTION');
+
+    // 3. Crear pedido
     const createdAt = new Date().toISOString();
-    db.run('INSERT INTO orders (customer_name, customer_id, total, created_at) VALUES (?, ?, ?, ?)',
-      [customer_name, customer_id || null, total, createdAt], function(err) {
-        if (err) return res.status(500).json({ error: err.message });
+    const orderResult = await dbRun(
+      'INSERT INTO orders (customer_name, customer_id, total, created_at) VALUES (?, ?, ?, ?)',
+      [customer_name, customer_id || null, total, createdAt]
+    );
+    const orderId = orderResult.lastID;
 
-        const orderId = this.lastID;
-        const itemStmt = db.prepare('INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)');
+    // 4. Insertar ítems del pedido
+    for (const { id, quantity } of products) {
+      const product = await dbGet('SELECT price FROM products WHERE id = ?', [id]);
+      await dbRun(
+        'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
+        [orderId, id, quantity, product.price]
+      );
+      // 5. Actualizar inventario
+      await dbRun('UPDATE products SET quantity = quantity - ? WHERE id = ?', [quantity, id]);
+    }
 
-        products.forEach(({ id, quantity }) => {
-          db.get('SELECT price FROM products WHERE id = ?', [id], (err, row) => {
-            itemStmt.run(orderId, id, quantity, row.price);
-          });
-        });
-        itemStmt.finalize();
+    // 6. Generar factura
+    const orderItems = await dbAll('SELECT product_id, quantity, price FROM order_items WHERE order_id = ?', [orderId]);
+    const invoice = {
+      order_id: orderId,
+      customer_name,
+      customer_id: customer_id || 'N/A',
+      products: orderItems.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        price: item.price
+      })),
+      total,
+      tax: total * 0.19, // 19% IVA (ajustable)
+      grand_total: total * 1.19,
+      created_at: createdAt
+    };
 
-        // Actualizar inventario
-        const updateStmt = db.prepare('UPDATE products SET quantity = quantity - ? WHERE id = ?');
-        products.forEach(({ id, quantity }) => {
-          updateStmt.run(quantity, id);
-        });
-        updateStmt.finalize();
+    // 7. Confirmar transacción
+    await dbRun('COMMIT');
 
-        // Generar factura
-        const invoice = {
-          order_id: orderId,
-          customer_name,
-          customer_id: customer_id || 'N/A',
-          products: products.map(p => ({
-            product_id: p.id,
-            quantity: p.quantity,
-            price: db.get('SELECT price FROM products WHERE id = ?', [p.id]).price
-          })),
-          total,
-          created_at: createdAt,
-          tax: total * 0.19, // Ejemplo: 19% IVA (ajustable)
-          grand_total: total * 1.19
-        };
-
-        res.status(201).json({ message: 'Pedido creado', invoice });
-      });
-  });
+    res.status(201).json({ message: 'Pedido creado', invoice });
+  } catch (error) {
+    // Revertir transacción en caso de error
+    await dbRun('ROLLBACK');
+    console.error(error);
+    res.status(500).json({ error: 'Error al procesar el pedido: ' + error.message });
+  }
 });
 
 // Listar todos los pedidos
