@@ -15,97 +15,245 @@ const db = new sqlite3.Database('./inventory.db', (err) => {
 
 // Crear tablas
 db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS products (
+  db.run(`CREATE TABLE IF NOT EXISTS Producto (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    quantity INTEGER NOT NULL,
-    price REAL NOT NULL
+    Nombre TEXT NOT NULL,
+    SKU TEXT NOT NULL,
+    Descripcion TEXT,
+    Cantidad INTEGER NOT NULL,
+    PrecioDefecto REAL NOT NULL
   )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS orders (
+  db.run(`CREATE TABLE IF NOT EXISTS Cliente (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_name TEXT NOT NULL,
-    customer_id TEXT,
-    status TEXT NOT NULL DEFAULT 'pendiente',
-    total REAL NOT NULL,
-    created_at TEXT NOT NULL
+    Nombre TEXT NOT NULL,
+    NIT TEXT NOT NULL,
+    Correo TEXT,
+    Numero TEXT NOT NULL
   )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS order_items (
-    order_id INTEGER,
-    product_id INTEGER,
+  db.run(`CREATE TABLE IF NOT EXISTS Contrato (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Fecha TEXT NOT NULL,
+    Ciudad TEXT,
+    Vencimiento TEXT,
+    Country TEXT
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS Precios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fkProducto INTEGER NOT NULL,
+    fkContrato INTEGER,
+    fkCliente INTEGER,
+    Precio REAL NOT NULL,
+    minCantidad INTEGER NOT NULL,
+    FOREIGN KEY (fkProducto) REFERENCES Producto(id),
+    FOREIGN KEY (fkContrato) REFERENCES Contrato(id),
+    FOREIGN KEY (fkCliente) REFERENCES Cliente(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS Pedido (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fkCliente INTEGER NOT NULL,
+    TOTAL REAL NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (fkCliente) REFERENCES Cliente(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS ProductosPedido (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fkProducto INTEGER NOT NULL,
+    fkPrecio INTEGER,
+    fkPedido INTEGER NOT NULL,
     quantity INTEGER NOT NULL,
-    price REAL NOT NULL,
-    FOREIGN KEY (order_id) REFERENCES orders(id),
-    FOREIGN KEY (product_id) REFERENCES products(id)
+    precioUsado REAL NOT NULL,
+    FOREIGN KEY (fkProducto) REFERENCES Producto(id),
+    FOREIGN KEY (fkPrecio) REFERENCES Precios(id),
+    FOREIGN KEY (fkPedido) REFERENCES Pedido(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS TPM (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fkCliente INTEGER NOT NULL,
+    fkProducto INTEGER NOT NULL,
+    TPM REAL NOT NULL CHECK (TPM >= 0 AND TPM <= 1),
+    Country TEXT,
+    FOREIGN KEY (fkCliente) REFERENCES Cliente(id),
+    FOREIGN KEY (fkProducto) REFERENCES Producto(id)
   )`);
 });
 
-
-// CRUD Endpoints
-// Obtener todos los productos
+// Endpoints para Producto
 app.get('/products', (req, res) => {
-  db.all('SELECT * FROM products', [], (err, rows) => {
+  db.all('SELECT * FROM Producto', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
 });
 
-// Obtener un producto por ID
-app.get('/products/:id', (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT * FROM products WHERE id = ?', [id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) return res.status(404).json({ error: 'Producto no encontrado' });
-    res.json(row);
-  });
-});
-
-// Crear un producto
 app.post('/products', (req, res) => {
-  const { name, quantity, price } = req.body;
-  if (!name || !quantity || !price) {
-    return res.status(400).json({ error: 'Faltan datos requeridos' });
+  const { Nombre, SKU, Descripcion, Cantidad, PrecioDefecto } = req.body;
+  if (!Nombre || !SKU || !Cantidad || !PrecioDefecto) {
+    return res.status(400).json({ error: 'Faltan datos requeridos (Nombre, SKU, Cantidad, PrecioDefecto)' });
   }
-  db.run('INSERT INTO products (name, quantity, price) VALUES (?, ?, ?)', 
-    [name, quantity, price], function(err) {
+  db.run(
+    'INSERT INTO Producto (Nombre, SKU, Descripcion, Cantidad, PrecioDefecto) VALUES (?, ?, ?, ?, ?)',
+    [Nombre, SKU, Descripcion || null, Cantidad, PrecioDefecto],
+    function (err) {
       if (err) return res.status(500).json({ error: err.message });
       res.status(201).json({ id: this.lastID });
-    });
+    }
+  );
 });
 
-// Actualizar un producto
-app.put('/products/:id', (req, res) => {
-  const { id } = req.params;
-  const { name, quantity, price } = req.body;
-  db.run('UPDATE products SET name = ?, quantity = ?, price = ? WHERE id = ?', 
-    [name, quantity, price, id], function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      if (this.changes === 0) return res.status(404).json({ error: 'Producto no encontrado' });
-      res.json({ message: 'Producto actualizado' });
-    });
-});
-
-// Eliminar un producto
-app.delete('/products/:id', (req, res) => {
-  const { id } = req.params;
-  db.run('DELETE FROM products WHERE id = ?', [id], function(err) {
+// Endpoints para Cliente
+app.get('/clients', (req, res) => {
+  db.all('SELECT * FROM Cliente', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
-    if (this.changes === 0) return res.status(404).json({ error: 'Producto no encontrado' });
-    res.json({ message: 'Producto eliminado' });
+    res.json(rows);
   });
 });
 
+app.post('/clients', (req, res) => {
+  const { Nombre, NIT, Correo, Numero } = req.body;
+  if (!Nombre || !NIT || !Numero) {
+    return res.status(400).json({ error: 'Faltan datos requeridos (Nombre, NIT, Numero)' });
+  }
+  db.run(
+    'INSERT INTO Cliente (Nombre, NIT, Correo, Numero) VALUES (?, ?, ?, ?)',
+    [Nombre, NIT, Correo || null, Numero],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.status(201).json({ id: this.lastID });
+    }
+  );
+});
 
-// Crear un pedido
+// Endpoints para Contrato
+app.get('/contracts', (req, res) => {
+  db.all('SELECT * FROM Contrato', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/contracts', (req, res) => {
+  const { Fecha, Ciudad, Vencimiento, Country } = req.body;
+  if (!Fecha) {
+    return res.status(400).json({ error: 'Falta la fecha del contrato' });
+  }
+  db.run(
+    'INSERT INTO Contrato (Fecha, Ciudad, Vencimiento, Country) VALUES (?, ?, ?, ?)',
+    [Fecha, Ciudad || null, Vencimiento || null, Country || null],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.status(201).json({ id: this.lastID });
+    }
+  );
+});
+
+// Endpoints para Precios
+app.get('/prices', (req, res) => {
+  db.all('SELECT * FROM Precios', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+app.post('/prices', (req, res) => {
+  const { fkProducto, fkContrato, fkCliente, Precio, minCantidad } = req.body;
+  if (!fkProducto || !Precio || !minCantidad) {
+    return res.status(400).json({ error: 'Faltan datos requeridos (fkProducto, Precio, minCantidad)' });
+  }
+  db.run(
+    'INSERT INTO Precios (fkProducto, fkContrato, fkCliente, Precio, minCantidad) VALUES (?, ?, ?, ?, ?)',
+    [fkProducto, fkContrato || null, fkCliente || null, Precio, minCantidad],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.status(201).json({ id: this.lastID });
+    }
+  );
+});
+
+// Endpoints para Pedido
+app.get('/orders', (req, res) => {
+  db.all('SELECT * FROM Pedido', [], (err, orders) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    const promises = orders.map(order => {
+      return new Promise((resolve, reject) => {
+        db.get('SELECT * FROM Cliente WHERE id = ?', [order.fkCliente], (err, client) => {
+          if (err) return reject(err);
+
+          db.all(
+            'SELECT pp.*, p.Nombre FROM ProductosPedido pp JOIN Producto p ON pp.fkProducto = p.id WHERE fkPedido = ?',
+            [order.id],
+            (err, items) => {
+              if (err) return reject(err);
+
+              resolve({
+                ...order,
+                customer: client,
+                products: items.map(item => ({
+                  product_id: item.fkProducto,
+                  product_name: item.Nombre,
+                  quantity: item.quantity,
+                  price: item.precioUsado
+                }))
+              });
+            }
+          );
+        });
+      });
+    });
+
+    Promise.all(promises)
+      .then(results => res.json(results))
+      .catch(err => res.status(500).json({ error: err.message }));
+  });
+});
+
+app.get('/orders/:id', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT * FROM Pedido WHERE id = ?', [id], (err, order) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+
+    db.get('SELECT * FROM Cliente WHERE id = ?', [order.fkCliente], (err, client) => {
+      if (err) return res.status(500).json({ error: err.message });
+
+      db.all(
+        'SELECT pp.*, p.Nombre FROM ProductosPedido pp JOIN Producto p ON pp.fkProducto = p.id WHERE fkPedido = ?',
+        [id],
+        (err, items) => {
+          if (err) return res.status(500).json({ error: err.message });
+
+          const invoice = {
+            order_id: order.id,
+            customer: client,
+            products: items.map(item => ({
+              product_id: item.fkProducto,
+              product_name: item.Nombre,
+              quantity: item.quantity,
+              price: item.precioUsado
+            })),
+            total: order.TOTAL,
+            created_at: order.created_at
+          };
+          res.json(invoice);
+        }
+      );
+    });
+  });
+});
+
 app.post('/orders', async (req, res) => {
-  const { customer_name, customer_id, products } = req.body;
-  if (!customer_name || !products || !Array.isArray(products)) {
-    return res.status(400).json({ error: 'Faltan datos requeridos' });
+  const { fkCliente, products } = req.body;
+  if (!fkCliente || !products || !Array.isArray(products)) {
+    return res.status(400).json({ error: 'Faltan datos requeridos (fkCliente, products)' });
   }
 
   try {
-    // Promisify db operations
     const dbGet = (sql, params) => new Promise((resolve, reject) => {
       db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
     });
@@ -118,126 +266,129 @@ app.post('/orders', async (req, res) => {
       db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)));
     });
 
-    // 1. Verificar inventario
+    const client = await dbGet('SELECT * FROM Cliente WHERE id = ?', [fkCliente]);
+    if (!client) {
+      return res.status(400).json({ error: 'Cliente no encontrado' });
+    }
+
+    const contract = await dbGet(
+      'SELECT * FROM Contrato WHERE id IN (SELECT fkContrato FROM Precios WHERE fkCliente = ?) ORDER BY Fecha DESC LIMIT 1',
+      [fkCliente]
+    );
+
     let total = 0;
+    const productPrices = [];
     for (const { id, quantity } of products) {
-      const product = await dbGet('SELECT id, quantity, price FROM products WHERE id = ?', [id]);
+      const product = await dbGet('SELECT * FROM Producto WHERE id = ?', [id]);
       if (!product) {
         return res.status(400).json({ error: `Producto con ID ${id} no encontrado` });
       }
-      if (product.quantity < quantity) {
+      if (product.Cantidad < quantity) {
         return res.status(400).json({ error: `Inventario insuficiente para producto ${id}` });
       }
-      total += product.price * quantity;
+
+      let priceRow = null;
+      let precioUsado = product.PrecioDefecto;
+      let priceId = null;
+
+      if (contract) {
+        priceRow = await dbGet(
+          'SELECT * FROM Precios WHERE fkProducto = ? AND fkCliente = ? AND fkContrato = ? AND minCantidad <= ?',
+          [id, fkCliente, contract.id, quantity]
+        );
+      }
+      if (!priceRow) {
+        priceRow = await dbGet(
+          'SELECT * FROM Precios WHERE fkProducto = ? AND fkCliente = ? AND fkContrato IS NULL AND minCantidad <= ?',
+          [id, fkCliente, quantity]
+        );
+      }
+      if (priceRow) {
+        precioUsado = priceRow.Precio;
+        priceId = priceRow.id;
+      }
+
+      total += precioUsado * quantity;
+      productPrices.push({ productId: id, quantity, priceId, precioUsado });
     }
 
-    // 2. Iniciar transacción
     await dbRun('BEGIN TRANSACTION');
 
-    // 3. Crear pedido
     const createdAt = new Date().toISOString();
     const orderResult = await dbRun(
-      'INSERT INTO orders (customer_name, customer_id, total, created_at) VALUES (?, ?, ?, ?)',
-      [customer_name, customer_id || null, total, createdAt]
+      'INSERT INTO Pedido (fkCliente, TOTAL, created_at) VALUES (?, ?, ?)',
+      [fkCliente, total, createdAt]
     );
     const orderId = orderResult.lastID;
 
-    // 4. Insertar ítems del pedido
-    for (const { id, quantity } of products) {
-      const product = await dbGet('SELECT price FROM products WHERE id = ?', [id]);
+    for (const { productId, quantity, priceId, precioUsado } of productPrices) {
       await dbRun(
-        'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
-        [orderId, id, quantity, product.price]
+        'INSERT INTO ProductosPedido (fkProducto, fkPrecio, fkPedido, quantity, precioUsado) VALUES (?, ?, ?, ?, ?)',
+        [productId, priceId, orderId, quantity, precioUsado]
       );
-      // 5. Actualizar inventario
-      await dbRun('UPDATE products SET quantity = quantity - ? WHERE id = ?', [quantity, id]);
+      await dbRun('UPDATE Producto SET Cantidad = Cantidad - ? WHERE id = ?', [quantity, productId]);
     }
 
-    // 6. Generar factura
-    const orderItems = await dbAll('SELECT product_id, quantity, price FROM order_items WHERE order_id = ?', [orderId]);
+    const orderItems = await dbAll(
+      'SELECT pp.*, p.Nombre FROM ProductosPedido pp JOIN Producto p ON pp.fkProducto = p.id WHERE fkPedido = ?',
+      [orderId]
+    );
     const invoice = {
       order_id: orderId,
-      customer_name,
-      customer_id: customer_id || 'N/A',
+      customer: client,
       products: orderItems.map(item => ({
-        product_id: item.product_id,
+        product_id: item.fkProducto,
+        product_name: item.Nombre,
         quantity: item.quantity,
-        price: item.price
+        price: item.precioUsado
       })),
       total,
-      tax: total * 0.19, // 19% IVA (ajustable)
-      grand_total: total * 1.19,
       created_at: createdAt
     };
 
-    // 7. Confirmar transacción
     await dbRun('COMMIT');
 
     res.status(201).json({ message: 'Pedido creado', invoice });
   } catch (error) {
-    // Revertir transacción en caso de error
     await dbRun('ROLLBACK');
     console.error(error);
     res.status(500).json({ error: 'Error al procesar el pedido: ' + error.message });
   }
 });
 
-// Listar todos los pedidos
-app.get('/orders', (req, res) => {
-  db.all('SELECT * FROM orders', [], (err, rows) => {
+// Endpoints para ProductosPedido
+app.get('/order-items', (req, res) => {
+  db.all(
+    'SELECT pp.*, p.Nombre AS product_name, ped.fkCliente FROM ProductosPedido pp JOIN Producto p ON pp.fkProducto = p.id JOIN Pedido ped ON pp.fkPedido = ped.id',
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
+// Endpoints para TPM
+app.get('/tpm', (req, res) => {
+  db.all('SELECT * FROM TPM', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
 });
 
-// Obtener un pedido con factura
-app.get('/orders/:id', (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT * FROM orders WHERE id = ?', [id], (err, order) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
-
-    db.all('SELECT product_id, quantity, price FROM order_items WHERE order_id = ?', [id], (err, items) => {
+app.post('/tpm', (req, res) => {
+  const { fkCliente, fkProducto, TPM, Country } = req.body;
+  if (!fkCliente || !fkProducto || TPM === undefined || TPM < 0 || TPM > 1) {
+    return res.status(400).json({ error: 'Faltan datos requeridos o TPM inválido (debe estar entre 0 y 1)' });
+  }
+  db.run(
+    'INSERT INTO TPM (fkCliente, fkProducto, TPM, Country) VALUES (?, ?, ?, ?)',
+    [fkCliente, fkProducto, TPM, Country || null],
+    function (err) {
       if (err) return res.status(500).json({ error: err.message });
-
-      const invoice = {
-        order_id: order.id,
-        customer_name: order.customer_name,
-        customer_id: order.customer_id || 'N/A',
-        status: order.status,
-        products: items,
-        total: order.total,
-        tax: order.total * 0.19, // 19% IVA
-        grand_total: order.total * 1.19,
-        created_at: order.created_at
-      };
-      res.json(invoice);
-    });
-  });
-});
-
-// Actualizar un pedido (ejemplo: cambiar estado)
-app.put('/orders/:id', (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  if (!status) return res.status(400).json({ error: 'Estado requerido' });
-
-  db.run('UPDATE orders SET status = ? WHERE id = ?', [status, id], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    if (this.changes === 0) return res.status(404).json({ error: 'Pedido no encontrado' });
-    res.json({ message: 'Pedido actualizado' });
-  });
-});
-
-// Eliminar un pedido
-app.delete('/orders/:id', (req, res) => {
-  const { id } = req.params;
-  db.run('DELETE FROM orders WHERE id = ?', [id], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    if (this.changes === 0) return res.status(404).json({ error: 'Pedido no encontrado' });
-    db.run('DELETE FROM order_items WHERE order_id = ?', [id]);
-    res.json({ message: 'Pedido eliminado' });
-  });
+      res.status(201).json({ id: this.lastID });
+    }
+  );
 });
 
 // Iniciar servidor
