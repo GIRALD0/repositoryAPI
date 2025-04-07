@@ -85,7 +85,16 @@ db.serialize(() => {
 
 // Endpoints para Producto
 app.get('/products', (req, res) => {
-  db.all('SELECT * FROM Producto', [], (err, rows) => {
+  const { SKU } = req.query;
+  let sql = 'SELECT * FROM Producto';
+  let params = [];
+
+  if (SKU) {
+    sql += ' WHERE SKU = ?';
+    params.push(SKU);
+  }
+
+  db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -108,7 +117,16 @@ app.post('/products', (req, res) => {
 
 // Endpoints para Cliente
 app.get('/clients', (req, res) => {
-  db.all('SELECT * FROM Cliente', [], (err, rows) => {
+  const { NIT } = req.query;
+  let sql = 'SELECT * FROM Cliente';
+  let params = [];
+
+  if (NIT) {
+    sql += ' WHERE NIT = ?';
+    params.push(NIT);
+  }
+
+  db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -131,7 +149,16 @@ app.post('/clients', (req, res) => {
 
 // Endpoints para Contrato
 app.get('/contracts', (req, res) => {
-  db.all('SELECT * FROM Contrato', [], (err, rows) => {
+  const { Fecha } = req.query;
+  let sql = 'SELECT * FROM Contrato';
+  let params = [];
+
+  if (Fecha) {
+    sql += ' WHERE Fecha = ?';
+    params.push(Fecha);
+  }
+
+  db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -154,7 +181,16 @@ app.post('/contracts', (req, res) => {
 
 // Endpoints para Precios
 app.get('/prices', (req, res) => {
-  db.all('SELECT * FROM Precios', [], (err, rows) => {
+  const { fkProducto } = req.query;
+  let sql = 'SELECT * FROM Precios';
+  let params = [];
+
+  if (fkProducto) {
+    sql += ' WHERE fkProducto = ?';
+    params.push(fkProducto);
+  }
+
+  db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -177,7 +213,16 @@ app.post('/prices', (req, res) => {
 
 // Endpoints para Pedido
 app.get('/orders', (req, res) => {
-  db.all('SELECT * FROM Pedido', [], (err, orders) => {
+  const { fkCliente } = req.query;
+  let sql = 'SELECT * FROM Pedido';
+  let params = [];
+
+  if (fkCliente) {
+    sql += ' WHERE fkCliente = ?';
+    params.push(fkCliente);
+  }
+
+  db.all(sql, params, (err, orders) => {
     if (err) return res.status(500).json({ error: err.message });
 
     const promises = orders.map(order => {
@@ -358,19 +403,33 @@ app.post('/orders', async (req, res) => {
 
 // Endpoints para ProductosPedido
 app.get('/order-items', (req, res) => {
-  db.all(
-    'SELECT pp.*, p.Nombre AS product_name, ped.fkCliente FROM ProductosPedido pp JOIN Producto p ON pp.fkProducto = p.id JOIN Pedido ped ON pp.fkPedido = ped.id',
-    [],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json(rows);
-    }
-  );
+  const { fkPedido } = req.query;
+  let sql = 'SELECT pp.*, p.Nombre AS product_name, ped.fkCliente FROM ProductosPedido pp JOIN Producto p ON pp.fkProducto = p.id JOIN Pedido ped ON pp.fkPedido = ped.id';
+  let params = [];
+
+  if (fkPedido) {
+    sql += ' WHERE fkPedido = ?';
+    params.push(fkPedido);
+  }
+
+  db.all(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
 });
 
 // Endpoints para TPM
 app.get('/tpm', (req, res) => {
-  db.all('SELECT * FROM TPM', [], (err, rows) => {
+  const { fkCliente } = req.query;
+  let sql = 'SELECT * FROM TPM';
+  let params = [];
+
+  if (fkCliente) {
+    sql += ' WHERE fkCliente = ?';
+    params.push(fkCliente);
+  }
+
+  db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
